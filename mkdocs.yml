@@ -24,6 +24,7 @@ nav:
       - 開発の進め方: development/index.md
       - テストの実行: development/verification.md
       - β02の性能確認: development/beta02-performance.md
+      - β03の高速化と検証: development/beta03.md
       - ドキュメントの編集と公開: development/documentation.md
 markdown_extensions:
   - admonition

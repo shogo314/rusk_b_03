@@ -1,6 +1,6 @@
 # テストの実行
 
-テストの共通入口は `tools/test.py` です。リポジトリのルートで次を実行すると、fmt・clippy・CargoのE2EとAtCoderサンプル・サニタイザー・AOJとLibrary Checkerの公開テストを順に確認し、最後に全段階の成否を一覧表示します。一つでも失敗すると終了コード1を返します。
+テストの共通入口は `tools/test.py` です。リポジトリのルートで次を実行すると、fmt・clippy・CargoのE2EとAtCoderサンプル・最適化無効版の比較・サニタイザー・AOJとLibrary Checkerの公開テストを順に確認し、最後に全段階の成否を一覧表示します。一つでも失敗すると終了コード1を返します。
 
 ```bash
 python3 tools/test.py
@@ -13,7 +13,7 @@ python3 tools/test.py
 | コマンド | 対象 |
 |---|---|
 | `python3 tools/test.py` | 全段階 |
-| `python3 tools/test.py --suite local` | fmt・clippy・E2E・AtCoderサンプル。公開テストの取得は不要 |
+| `python3 tools/test.py --suite local` | fmt・clippy・E2E・AtCoderサンプルと最適化無効版の回帰検証。公開テストの取得は不要 |
 | `python3 tools/test.py --suite sanitizers` | ASan・UBSan・LeakSanitizer |
 | `python3 tools/test.py --suite public` | AOJ・Library Checkerの公開テスト |
 
@@ -70,3 +70,9 @@ wt a+b;
 GitHub Actionsの `Test` も `python3 tools/test.py` を使い、取得済み公開テストをキャッシュします。共通入口は `examples/` 以下の `*.test.rusk` を自動で列挙します。解答を追加すると、手元とCIの両方で対象になります。
 
 この検証は公開ケースに対するローカル実行です。オンラインジャッジへの提出・AC確認とは区別します。`oj-verify` の既定の実行時間制限は1ケース60秒で、各問題のジャッジ環境の制限時間を再現するものではありません。`--tle` で変更できます。
+
+## 最適化とバッファ入出力の検証
+
+`tests/optimization.rs` は共有・評価順序・終了コード・エラー位置を通常版と `--no-opt` で比較し、アロケーターを計測して一時値の確保削減も確認します。`tests/buffered_io.rs` は64 KiB境界をまたぐ入力・出力、CRLF・EOF・NUL、トークンと行入力の混在、外部のiostreamとの接続、不正入力を確認します。
+
+共通入口では既存のE2E・構造体・タプル・ジェネリクス・include・データ構造の77テストを最適化無効でも実行します。性能の測定手順と結果は [β03の高速化と検証](beta03.md) に記録しています。

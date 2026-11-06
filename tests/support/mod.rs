@@ -19,16 +19,28 @@ impl Case {
         Self(dir)
     }
     pub(crate) fn compile(&self) -> Output {
+        self.compile_with_options(&[])
+    }
+    pub(crate) fn compile_with_options(&self, options: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_rusk"))
             .arg("compile")
             .arg(self.0.join("main.rusk"))
+            .args(options)
+            .args(std::env::var_os("RUSK_TEST_NO_OPT").map(|_| "--no-opt"))
             .arg("-o")
             .arg(self.0.join("main.cpp"))
             .output()
             .unwrap()
     }
     pub(crate) fn run(&self, input: &str) -> Output {
-        let compiled = self.compile();
+        self.run_with_options(input, &[])
+    }
+    pub(crate) fn run_with_options(&self, input: &str, options: &[&str]) -> Output {
+        let compiled = if options.is_empty() {
+            self.compile()
+        } else {
+            self.compile_with_options(options)
+        };
         assert!(
             compiled.status.success(),
             "{}",

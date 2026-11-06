@@ -200,7 +200,7 @@ impl Compiler {
             ));
             for i in 0..record.fields.len() {
                 if i > 0 {
-                    code.push_str("std::cout << ' ';\n");
+                    code.push_str("rusk_write(' ');\n");
                 }
                 code.push_str(&format!("write_value(value->field_{i});\n"));
             }

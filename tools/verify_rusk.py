@@ -30,6 +30,7 @@ def main():
         )]
         paths += sorted((ROOT / 'src').rglob('*.rs'))
         paths += sorted((ROOT / 'lib').rglob('*.rusk'))
+        paths += sorted((ROOT / 'lib').rglob('*.hpp'))
         for path in sorted(set(paths)):
             print(path)
         return

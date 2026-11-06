@@ -44,6 +44,14 @@ detached.payload[1][0]=7; wt old,detached.payload,original.payload;
 fw.add(1,4); wt fw.prefix_sum(3),detached.prefix_sum(3);
 let seg:=SumSegTree(["a","b","c"],""); seg.set(1,"X"); wt seg.prod(0,3);
 ''', b'', b'10 6\naXc\n'),
+    ('''fn fresh(x:Int)->Int { return x*2+1; }
+let saved:Vec<Int>:=[];
+for i in 0..1000 { saved.push_back(fresh(i)); }
+let held:=saved[0]; let other = saved; held=8;
+wt saved[0],other[0],saved[-1];
+in n:Int,s:Str; wt n,s.len(),s[0],s[-1];
+s.push_back('!'); wt s.len();
+''', b'7 '+b'x'*131100+b'\n', b'8 1 1999\n7 131100 x x\n131101\n'),
     ((ROOT/'examples/prototype/grid_bfs.rusk').read_text(), b'3 4\n....\n.##.\n....\n', b'5\n'),
 ]
 

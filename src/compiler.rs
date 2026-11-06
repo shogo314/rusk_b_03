@@ -1,4 +1,5 @@
 use crate::ast::{Binding, Expr, ExprKind, Initializer, Name, Span, Stmt};
+use crate::backend::ir::{Body, Call, Instruction, Value};
 use std::collections::{BTreeMap, BTreeSet};
 mod generics;
 mod records;
@@ -19,11 +20,6 @@ struct Variable {
     ty: String,
     initialized: bool,
 }
-#[derive(Clone)]
-struct Value {
-    cpp: String,
-    ty: String,
-}
 #[derive(Default)]
 pub struct Compiler {
     types: BTreeMap<String, String>,
@@ -37,7 +33,8 @@ pub struct Compiler {
     functions: Vec<Function>,
     symbols: BTreeMap<String, String>,
     scopes: Vec<BTreeMap<String, Variable>>,
-    body: String,
+    body: Body,
+    no_optimization: bool,
     counter: usize,
     used: BTreeSet<usize>,
     loops: Vec<Option<String>>,
@@ -57,7 +54,7 @@ fn quoted(s: &str) -> String {
     out.push('"');
     out
 }
-fn location(s: &Span) -> String {
+pub(crate) fn location(s: &Span) -> String {
     format!("Loc{{{}, {}, {}}}", quoted(&s.file), s.line, s.column)
 }
 fn property(n: &Name, p: &BTreeMap<String, String>, key: &str) -> Result<String, String> {
@@ -74,6 +71,12 @@ fn validate(n: &Name, p: &BTreeMap<String, String>, allowed: &[&str]) -> Result<
     Ok(())
 }
 impl Compiler {
+    pub fn with_optimization(enabled: bool) -> Self {
+        Self {
+            no_optimization: !enabled,
+            ..Self::default()
+        }
+    }
     pub fn compile(mut self, sources: &[Vec<Stmt>]) -> Result<String, String> {
         for source in sources {
             for s in source {
@@ -277,7 +280,7 @@ impl Compiler {
         }
         out.push_str(&self.record_copy_cpp());
         out.push_str("int main() {\n");
-        out.push_str(&self.body);
+        out.push_str(&self.body.cpp(!self.no_optimization));
         out.push_str("return 0;\n}\n");
         Ok(out)
     }
@@ -327,7 +330,7 @@ impl Compiler {
         self.functions[index].code = format!(
             "{} {{\n{}{}\n}}\n",
             self.signature(&f),
-            self.body,
+            self.body.cpp(!self.no_optimization),
             if f.result == "Unit" { "return;" } else { "" }
         );
         self.scopes.clear();
@@ -425,9 +428,17 @@ impl Compiler {
     }
     fn emit(&mut self, ty: &str, code: String) -> Value {
         let cpp = self.temp();
-        self.body.push_str(&format!("auto {cpp} = {code};\n"));
-        self.pending_temps.push(cpp.clone());
-        Value { cpp, ty: ty.into() }
+        let value = Value {
+            cpp: cpp.clone(),
+            ty: ty.into(),
+        };
+        self.body.instructions.push(Instruction::Object {
+            result: value.clone(),
+            native: self.types[ty].clone(),
+            expression: code,
+        });
+        self.pending_temps.push(cpp);
+        value
     }
     fn find_var(&self, n: &Name) -> Result<Variable, String> {
         self.scopes
@@ -512,16 +523,27 @@ impl Compiler {
         })?;
         self.used.insert(i);
         let f = self.functions[i].clone();
-        let mut params: Vec<_> = args.iter().map(|v| v.cpp.clone()).collect();
-        params.push(location(s));
-        let call = format!("{}({})", f.cpp, params.join(", "));
-        if f.result == "Unit" {
-            self.body.push_str(&format!("{call};\n"));
-            Ok(self.emit("Unit", "make_obj<Unit>(Unit{})".into()))
-        } else {
-            Ok(self.emit(&f.result, call))
-        }
+        let result = Value {
+            cpp: self.temp(),
+            ty: f.result.clone(),
+        };
+        self.pending_temps.push(result.cpp.clone());
+        self.body.instructions.push(Instruction::Call(Call {
+            name: f.name.text,
+            cpp: f.cpp,
+            trusted: f.body.is_none()
+                && matches!(
+                    f.name.span.file.as_str(),
+                    "<stdlib/core.rusk>" | "<stdlib/vec.rusk>"
+                ),
+            args,
+            span: s.clone(),
+            result: result.clone(),
+            native: self.types[&f.result].clone(),
+        }));
+        Ok(result)
     }
+
     fn literal(&mut self, ty: &str, text: &str, s: &Span) -> Result<Value, String> {
         let cpp = self
             .types
@@ -569,7 +591,17 @@ impl Compiler {
             "Bool" => text.into(),
             _ => return Err(s.error("unsupported literal")),
         };
-        Ok(self.emit(ty, format!("make_obj<{cpp}>({value})")))
+        let result = Value {
+            cpp: self.temp(),
+            ty: ty.into(),
+        };
+        self.pending_temps.push(result.cpp.clone());
+        self.body.instructions.push(Instruction::Literal {
+            result: result.clone(),
+            native: cpp,
+            expression: value,
+        });
+        Ok(result)
     }
     fn release_temps(&mut self) {
         for temp in self.pending_temps.drain(..) {

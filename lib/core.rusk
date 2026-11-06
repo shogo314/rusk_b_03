@@ -1,7 +1,7 @@
 // C++ backend definitions. code/cpp_name are provisional prototype properties.
 
 extern symbol __core__ {
-    code: "#include <cstdint>\n#include <cstdlib>\n#include <iostream>\n#include <memory>\n#include <utility>\n#include <string>\n#include <charconv>\n#include <limits>\n#include <system_error>\nstruct Unit {};\nstruct Loc { const char* file; unsigned line, column; };\ntemplate<class T> using Obj = std::shared_ptr<T>;\ntemplate<class T> Obj<T> make_obj(T value) { return std::make_shared<T>(std::move(value)); }\n[[noreturn]] inline void fail(Loc loc, const char* message) {\n    std::cerr << loc.file << ':' << loc.line << ':' << loc.column << \": \" << message << '\\n';\n    std::exit(1);\n}\ninline std::int64_t checked_int(__int128 value, Loc loc) {\n    if (value < std::numeric_limits<std::int64_t>::min() || value > std::numeric_limits<std::int64_t>::max()) fail(loc, \"integer overflow\");\n    return static_cast<std::int64_t>(value);\n}\ninline bool ascii_space(int c) { return c == ' ' || (c >= 9 && c <= 13); }\ninline std::string read_token(Loc loc) {\n    while (ascii_space(std::cin.peek())) std::cin.get();\n    if (std::cin.peek() == std::char_traits<char>::eof()) fail(loc, \"unexpected end of input\");\n    std::string token;\n    while (std::cin.peek() != std::char_traits<char>::eof() && !ascii_space(std::cin.peek())) token.push_back(static_cast<char>(std::cin.get()));\n    return token;\n}\ninline void require_ascii(const std::string& text, Loc loc) {\n    for (unsigned char c : text) if (c > 127) fail(loc, \"non-ASCII input\");\n}\n\ninline const bool rusk_fast_io = [] { std::ios::sync_with_stdio(false); std::cin.tie(nullptr); return true; }();\n",
+    code: "#include <cstdint>\n#include <cstdlib>\n#include <iostream>\n#include <memory>\n#include <utility>\n#include <string>\n#include <charconv>\n#include <limits>\n#include <system_error>\nstruct Unit {};\nstruct Loc { const char* file; unsigned line, column; };\ntemplate<class T> using Obj = std::shared_ptr<T>;\ntemplate<class T> Obj<T> make_obj(T value) { return std::make_shared<T>(std::move(value)); }\n[[noreturn]] inline void fail(Loc loc, const char* message) {\n    std::cerr << loc.file << ':' << loc.line << ':' << loc.column << \": \" << message << '\\n';\n    std::exit(1);\n}\ninline std::int64_t checked_int(__int128 value, Loc loc) {\n    if (value < std::numeric_limits<std::int64_t>::min() || value > std::numeric_limits<std::int64_t>::max()) fail(loc, \"integer overflow\");\n    return static_cast<std::int64_t>(value);\n}\ninline bool ascii_space(int c) { return c == ' ' || (c >= 9 && c <= 13); }\n/* RUSK_IO_RUNTIME */\ninline std::string read_token(Loc loc) {\n    while (ascii_space(rusk_peek())) rusk_get();\n    if (rusk_peek() == std::char_traits<char>::eof()) fail(loc, \"unexpected end of input\");\n    std::string token;\n    while (rusk_peek() != std::char_traits<char>::eof() && !ascii_space(rusk_peek())) token.push_back(static_cast<char>(rusk_get()));\n    return token;\n}\ninline void require_ascii(const std::string& text, Loc loc) {\n    for (unsigned char c : text) if (c > 127) fail(loc, \"non-ASCII input\");\n}\n\n\n",
 }
 
 extern type Int {
@@ -36,7 +36,7 @@ extern fn __assign__(x: Int, y: Int) {
 
 extern fn __write__(x: Int) {
     cpp_name: "write_Int",
-    code: "inline void write_Int(Obj<std::int64_t> x, Loc) { std::cout << *x; }",
+    code: "inline void write_Int(Obj<std::int64_t> x, Loc) { rusk_write(*x); }",
 }
 
 extern fn copy(x: Bool) -> Bool {
@@ -51,7 +51,7 @@ extern fn __assign__(x: Bool, y: Bool) {
 
 extern fn __write__(x: Bool) {
     cpp_name: "write_Bool",
-    code: "inline void write_Bool(Obj<bool> x, Loc) { std::cout << (*x ? \"Yes\" : \"No\"); }",
+    code: "inline void write_Bool(Obj<bool> x, Loc) { rusk_write(*x); }",
 }
 
 extern fn copy(x: Char) -> Char {
@@ -66,7 +66,7 @@ extern fn __assign__(x: Char, y: Char) {
 
 extern fn __write__(x: Char) {
     cpp_name: "write_Char",
-    code: "inline void write_Char(Obj<char> x, Loc) { std::cout << *x; }",
+    code: "inline void write_Char(Obj<char> x, Loc) { rusk_write(*x); }",
 }
 
 extern fn copy(x: Str) -> Str {
@@ -81,7 +81,7 @@ extern fn __assign__(x: Str, y: Str) {
 
 extern fn __write__(x: Str) {
     cpp_name: "write_Str",
-    code: "inline void write_Str(Obj<std::string> x, Loc) { std::cout << *x; }",
+    code: "inline void write_Str(Obj<std::string> x, Loc) { rusk_write(*x); }",
 }
 
 extern fn copy(x: Unit) -> Unit {
@@ -141,12 +141,12 @@ extern fn __read__() -> Str {
 
 extern fn __read__() -> Char {
     cpp_name: "read_Char",
-    code: "inline Obj<char> read_Char(Loc loc) {\n    while (ascii_space(std::cin.peek())) std::cin.get();\n    int c = std::cin.get();\n    if (c == std::char_traits<char>::eof()) fail(loc, \"unexpected end of input\");\n    if (c > 127) fail(loc, \"non-ASCII input\");\n    return make_obj<char>(static_cast<char>(c));\n}",
+    code: "inline Obj<char> read_Char(Loc loc) {\n    while (ascii_space(rusk_peek())) rusk_get();\n    int c = rusk_get();\n    if (c == std::char_traits<char>::eof()) fail(loc, \"unexpected end of input\");\n    if (c > 127) fail(loc, \"non-ASCII input\");\n    return make_obj<char>(static_cast<char>(c));\n}",
 }
 
 extern fn read_line() -> Str {
     cpp_name: "read_line_Str",
-    code: "inline Obj<std::string> read_line_Str(Loc loc) {\n    std::string value;\n    if (!std::getline(std::cin, value)) fail(loc, \"unexpected end of input\");\n    if (!value.empty() && value.back() == '\\r') value.pop_back();\n    require_ascii(value, loc); return make_obj<std::string>(value);\n}",
+    code: "inline Obj<std::string> read_line_Str(Loc loc) { auto value=rusk_read_line(loc); require_ascii(value,loc); return make_obj<std::string>(value); }",
 }
 
 // Conditions and value comparisons. Hook names are provisional.

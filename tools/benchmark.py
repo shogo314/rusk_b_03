@@ -3,7 +3,7 @@
 import argparse
 import datetime
 import json
-import os
+import hashlib
 from pathlib import Path
 import platform
 import shutil
@@ -37,6 +37,30 @@ while q:
 print(d[h-1][w-1])
 '''
 
+
+INPUT_RUSK = 'in n:Int; let total:=0; for i in 0..n { in x:Int; total+=x; } wt total;'
+INPUT_CPP = '#include <iostream>\nint main(){std::ios::sync_with_stdio(false);std::cin.tie(nullptr);int n;std::cin>>n;long long total=0,x;while(n--){std::cin>>x;total+=x;}std::cout<<total<<"\\n";}'
+INPUT_PY = 'import sys\nit=iter(map(int,sys.stdin.buffer.read().split())); n=next(it); print(sum(it))\n'
+OUTPUT_RUSK = 'in n:Int; for i in 0..n { wt i; }'
+OUTPUT_CPP = '#include <iostream>\nint main(){std::ios::sync_with_stdio(false);std::cin.tie(nullptr);int n;std::cin>>n;for(int i=0;i<n;++i)std::cout<<i<<"\\n";}'
+OUTPUT_PY = 'import sys\nn=int(input());sys.stdout.write("".join(str(i)+"\\n" for i in range(n)))\n'
+FENWICK_RUSK = 'include "'+str(ROOT/'examples/beta02/library/fenwick.rusk')+'"; in n,q:Int; let fw:=Fenwick(n,0); for i in 0..q { in op,x,y:Int; if op==0 { fw.add(x,y); } else { wt fw.range_sum(x,y); } }'
+FENWICK_CPP = '#include <bits/stdc++.h>\nint main(){std::ios::sync_with_stdio(false);std::cin.tie(nullptr);int n,q;std::cin>>n>>q;std::vector<long long>t(n+1);auto sum=[&](int i){long long s=0;for(;i;i-=i&-i)s+=t[i];return s;};while(q--){int op,x,y;std::cin>>op>>x>>y;if(op==0){for(int i=x+1;i<=n;i+=i&-i)t[i]+=y;}else std::cout<<sum(y)-sum(x)<<"\\n";}}'
+FENWICK_PY = '''import sys
+it=iter(map(int,sys.stdin.buffer.read().split()));n=next(it);q=next(it);t=[0]*(n+1);out=[]
+def prefix(i):
+ s=0
+ while i:s+=t[i];i-=i&-i
+ return s
+for _ in range(q):
+ op=next(it);x=next(it);y=next(it)
+ if op==0:
+  i=x+1
+  while i<=n:t[i]+=y;i+=i&-i
+ else:out.append(str(prefix(y)-prefix(x)))
+sys.stdout.write('\\n'.join(out)+'\\n')
+'''
+
 def version(command):
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     return (result.stdout or result.stderr).strip().splitlines()[0]
@@ -46,8 +70,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, default=ROOT/'target/debug/rusk')
     parser.add_argument('--baseline-compiler', type=Path, help='compare a previous Rusk compiler on the same inputs')
+    parser.add_argument('--compare-no-opt', action='store_true', help='also check and measure the same compiler with --no-opt')
     parser.add_argument('--repeats', type=int, default=3)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--case', action='append', choices=['range_sum','integer_input','integer_output','sort_search','grid_bfs','fenwick'], help='run only selected cases (repeatable)')
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error('--repeats must be positive')
@@ -55,13 +81,22 @@ def main():
     n, q, h, w = 200_000, 2_000, 200, 200
     values = [(i*7919)%1_000_003 for i in range(n)]
     queries = [(i*12347)%1_000_003 for i in range(q)]
+    integer_data = ('1000000\n'+' '.join(str(i%1000) for i in range(1_000_000))+'\n').encode()
+    fenwick_n, fenwick_q = 100_000, 100_000
+    operations = [f"0 {(i*7919)%fenwick_n} {i%100}" if i%2==0 else f"1 0 {(i*12347)%fenwick_n}" for i in range(fenwick_q)]
+    fenwick_data = (f"{fenwick_n} {fenwick_q}\n"+'\n'.join(operations)+'\n').encode()
     jobs = [
+        ('integer_input', INPUT_RUSK, INPUT_CPP, INPUT_PY, integer_data, 'N=1,000,000'),
+        ('integer_output', OUTPUT_RUSK, OUTPUT_CPP, OUTPUT_PY, b'200000\n', 'N=200,000'),
+        ('fenwick', FENWICK_RUSK, FENWICK_CPP, FENWICK_PY, fenwick_data, 'N=100,000; Q=100,000'),
         ('range_sum', RANGE_RUSK, RANGE_CPP, RANGE_PY, b'1000000\n', 'N=1,000,000'),
         ('sort_search', (ROOT/'examples/prototype/sort_search.rusk').read_text(), SEARCH_CPP, SEARCH_PY,
          (f'{n} {q}\n'+' '.join(map(str,values))+'\n'+' '.join(map(str,queries))+'\n').encode(), 'N=200,000; Q=2,000'),
         ('grid_bfs', (ROOT/'examples/prototype/grid_bfs.rusk').read_text(), GRID_CPP, GRID_PY,
          (f'{h} {w}\n'+('.'*w+'\n')*h).encode(), '200×200 open grid'),
     ]
+    if args.case:
+        jobs = [job for job in jobs if job[0] in args.case]
     results = []
     with tempfile.TemporaryDirectory(prefix='rusk-benchmark-') as directory:
         temp = Path(directory)
@@ -73,6 +108,10 @@ def main():
             for label in ['rusk','native']:
                 subprocess.run(['g++','-std=c++20','-O2',str(temp/f'{label}.cpp'),'-o',str(temp/label)],check=True)
             commands = {'C++':[str(temp/'native')], 'Rusk':[str(temp/'rusk')]}
+            if args.compare_no_opt:
+                subprocess.run([str(args.compiler.resolve()),'compile',str(temp/'main.rusk'),'--no-opt','-o',str(temp/'plain.cpp')],check=True)
+                subprocess.run(['g++','-std=c++20','-O2',str(temp/'plain.cpp'),'-o',str(temp/'plain')],check=True)
+                commands['Rusk no-opt']=[str(temp/'plain')]
             if args.baseline_compiler:
                 subprocess.run([str(args.baseline_compiler.resolve()),'compile',str(temp/'main.rusk'),'-o',str(temp/'previous.cpp')],check=True)
                 subprocess.run(['g++','-std=c++20','-O2',str(temp/'previous.cpp'),'-o',str(temp/'previous')],check=True)
@@ -80,22 +119,31 @@ def main():
             if pypy:
                 commands['PyPy']=[pypy,str(temp/'baseline.py')]
             reference = None
-            row = {'name':name, 'size':size, 'seconds':{}}
-            for label, command in commands.items():
-                samples=[]
-                for _ in range(args.repeats):
+            row = {'name':name, 'size':size, 'input_sha256':hashlib.sha256(data).hexdigest(), 'source_sha256':hashlib.sha256(rusk.encode()).hexdigest(), 'seconds':{}, 'samples':{}}
+            samples = {label: [] for label in commands}
+            # Interleave implementations to reduce systematic ordering bias.
+            for repeat in range(args.repeats):
+                labels = list(commands)
+                labels = labels[repeat % len(labels):] + labels[:repeat % len(labels)]
+                for label in labels:
                     start=time.perf_counter()
-                    run=subprocess.run(command,input=data,capture_output=True,check=True)
-                    samples.append(time.perf_counter()-start)
+                    run=subprocess.run(commands[label],input=data,capture_output=True,check=True)
+                    samples[label].append(time.perf_counter()-start)
                     if reference is None:
                         reference=run.stdout
                     if run.stdout != reference:
                         raise RuntimeError(f'{name}: output mismatch in {label}')
-                row['seconds'][label]=statistics.median(samples)
+            for label in commands:
+                row['seconds'][label]=statistics.median(samples[label])
+                row['samples'][label]=samples[label]
+            if args.baseline_compiler:
+                row['speedup_vs_baseline']=row['seconds']['Rusk baseline']/row['seconds']['Rusk']
             results.append(row)
     report = {'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'platform':platform.platform(),
               'cpu':next((line.split(':',1)[1].strip() for line in Path('/proc/cpuinfo').read_text().splitlines() if line.startswith('model name')), 'unknown'),
               'g++':version(['g++','--version']), 'pypy':version([pypy,'--version']) if pypy else None,
+              'compiler_sha256':hashlib.sha256(args.compiler.read_bytes()).hexdigest(),
+              'baseline_compiler_sha256':hashlib.sha256(args.baseline_compiler.read_bytes()).hexdigest() if args.baseline_compiler else None,
               'repeats':args.repeats, 'results':results}
     output=json.dumps(report,ensure_ascii=False,indent=2)+'\n'
     print(output,end='')

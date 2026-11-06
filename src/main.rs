@@ -1,4 +1,5 @@
 mod ast;
+mod backend;
 mod compiler;
 mod rusk_grammar;
 mod source;
@@ -35,10 +36,10 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let command = args
         .next()
-        .ok_or("usage: rusk compile FILE [-o OUTPUT] | dependencies FILE")?;
+        .ok_or("usage: rusk compile FILE [-o OUTPUT] [--no-opt] | dependencies FILE")?;
     if command == "--help" || command == "-h" {
         println!(
-            "usage: rusk compile FILE [-o OUTPUT] | dependencies FILE\nGenerate C++20 source (default: a.cpp), or list source dependencies."
+            "usage: rusk compile FILE [-o OUTPUT] [--no-opt] | dependencies FILE\nGenerate C++20 source (default: a.cpp), or list source dependencies."
         );
         return Ok(());
     }
@@ -56,19 +57,30 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
     let mut output = "a.cpp".to_string();
+    let mut optimize = true;
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--no-opt" => optimize = false,
             "-o" | "--output" => output = args.next().ok_or("missing output path")?,
             _ => return Err(format!("unknown argument '{arg}'")),
         }
     }
-    let core = parse(CORE, "<stdlib/core.rusk>")?;
+    let mut core = parse(CORE, "<stdlib/core.rusk>")?;
+    for statement in &mut core {
+        if let ast::Stmt::Symbol(_, properties) = statement
+            && let Some(code) = properties.get_mut("code")
+        {
+            *code = code.replace("/* RUSK_IO_RUNTIME */", include_str!("../lib/io.hpp"));
+            code.push_str(include_str!("../lib/scalar.hpp"));
+        }
+    }
     let collections = parse(
         include_str!("../lib/collections.rusk"),
         "<stdlib/collections.rusk>",
     )?;
     let source = source::load(std::path::Path::new(&file))?.statements;
-    let cpp = compiler::Compiler::default().compile(&[core, collections, source])?;
+    let cpp =
+        compiler::Compiler::with_optimization(optimize).compile(&[core, collections, source])?;
     std::fs::write(&output, cpp).map_err(|e| format!("{output}: {e}"))?;
     Ok(())
 }
